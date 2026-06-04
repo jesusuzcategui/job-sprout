@@ -431,9 +431,15 @@ def set_setting(key: str, value: str) -> None:
 
 
 def get_all_settings() -> dict[str, str]:
-    with transaction() as conn:
-        rows = conn.execute("SELECT key, value FROM settings").fetchall()
-    return {r["key"]: r["value"] for r in rows}
+    try:
+        with transaction() as conn:
+            rows = conn.execute("SELECT key, value FROM settings").fetchall()
+        return {r["key"]: r["value"] for r in rows}
+    except Exception:
+        init_db()
+        with transaction() as conn:
+            rows = conn.execute("SELECT key, value FROM settings").fetchall()
+        return {r["key"]: r["value"] for r in rows}
 
 
 if __name__ == "__main__":

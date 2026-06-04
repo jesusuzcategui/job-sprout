@@ -43,6 +43,8 @@ def cmd_init_db() -> int:
 
 def cmd_gui() -> int:
     from core.browser import ensure_playwright_browser
+    from core.database import init_db
+    init_db()
     ensure_playwright_browser()
     try:
         from gui.main_window import launch_gui
@@ -58,6 +60,8 @@ def cmd_gui() -> int:
 
 def cmd_cli(args: argparse.Namespace) -> int:
     from core.browser import ensure_playwright_browser
+    from core.database import init_db
+    init_db()
     ensure_playwright_browser()
     logging.basicConfig(
         level=logging.INFO,
@@ -92,6 +96,8 @@ def cmd_cli(args: argparse.Namespace) -> int:
 
 def cmd_cli_scraper(args: argparse.Namespace) -> int:
     from core.browser import ensure_playwright_browser
+    from core.database import init_db
+    init_db()
     ensure_playwright_browser()
     from scripts.run_cli import main as run_cli_main
     sys.argv = [

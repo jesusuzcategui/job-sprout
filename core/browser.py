@@ -48,6 +48,8 @@ def ensure_playwright_browser() -> None:
     """Instala Playwright Chromium si no está presente.
 
     La primera ejecución descarga ~300MB. Es idempotente.
+    Usa la API interna de Playwright para instalar, sin depender de
+    un intérprete Python externo (funciona en bundles PyInstaller).
     """
     try:
         from playwright.sync_api import sync_playwright
@@ -59,17 +61,17 @@ def ensure_playwright_browser() -> None:
         pass
 
     log.info("[browser] Chromium no encontrado. Instalando… (una vez, ~300MB)")
-    import subprocess
     import sys
+    old_argv = list(sys.argv)
     try:
-        subprocess.check_call(
-            [sys.executable, "-m", "playwright", "install", "chromium"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.STDOUT,
-        )
+        sys.argv = ["playwright", "install", "chromium"]
+        from playwright.__main__ import main as playwright_main
+        playwright_main()
         log.info("[browser] Chromium instalado correctamente")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         log.warning("[browser] Fallo instalacion de Chromium: %s", e)
+    finally:
+        sys.argv = old_argv
 
 
 def _find_bundled_browser() -> str | None:
