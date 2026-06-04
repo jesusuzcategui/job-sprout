@@ -16,17 +16,15 @@ jobs:
           - os: ubuntu-latest
             artifact_name: jobsprout-linux-x64
             platform: linux
-            browser_subdir: chrome-linux/chrome
           - os: windows-latest
             artifact_name: jobsprout-windows-x64
             platform: windows
-            browser_subdir: chrome-win/chrome.exe
           - os: macos-latest
             artifact_name: jobsprout-macos-x64
             platform: macos
-            browser_subdir: chrome-mac/Chromium.app
 
     runs-on: ${{ matrix.os }}
+    fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +44,7 @@ jobs:
 
       - name: Install Python deps
         run: |
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements.txt pyinstaller pillow
           python -m playwright install chromium
 
       - name: Build with PyInstaller
@@ -54,7 +52,9 @@ jobs:
         run: |
           SEP=":"
           [[ "${{ matrix.platform }}" == "windows" ]] && SEP=";"
-          pyinstaller --onedir --windowed \
+          ARGS="--onedir"
+          [[ "${{ matrix.platform }}" != "linux" ]] && ARGS="$ARGS --windowed"
+          pyinstaller $ARGS \
             --name "JobSprout" \
             --icon "images/logo-cuadrado-app.png" \
             --add-data "images${SEP}images" \
