@@ -1,0 +1,8 @@
+# Core
+playwright>=1.47
+langdetect>=1.0.9
+PyQt6>=6.7
+
+# AI (opcional, requiere GEMINI_API_KEY en .env)
+google-genai>=1.0
+python-dotenv>=1.0
