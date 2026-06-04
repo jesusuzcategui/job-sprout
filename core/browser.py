@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,68 @@ log = logging.getLogger(__name__)
 
 
 DEFAULT_PROFILE_DIR = Path("data/browser_profile")
+
+# User-Agent por plataforma para el modo persistente
+_PLATFORM_UA: dict[str, str] = {
+    "linux": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "darwin": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "win32": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+}
+
+
+def _find_bundled_browser() -> str | None:
+    """Detecta si corremos dentro de un bundle PyInstaller y busca el
+    Playwright Chromium empaquetado en _internal/playwright-browser/.
+
+    Returns:
+        path al ejecutable de chromium, o None si no esta empaquetado.
+    """
+    try:
+        frozen = getattr(sys, "frozen", False)
+    except Exception:
+        frozen = False
+    if not frozen:
+        return None
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if not meipass:
+        return None
+    base = Path(meipass)
+    browser_root = base / "playwright-browser"
+
+    candidates: list[str] = []
+    if sys.platform == "linux":
+        candidates = ["chrome-linux/chrome"]
+    elif sys.platform == "darwin":
+        candidates = [
+            "chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+            "chrome-mac/Chromium.app/Contents/MacOS/chrome",
+        ]
+    elif sys.platform == "win32":
+        candidates = ["chrome-win/chrome.exe"]
+
+    for rel in candidates:
+        path = browser_root / rel
+        if path.exists() and os.access(path, os.X_OK):
+            log.info("[browser] bundled chromium en %s", path)
+            return str(path)
+
+    log.warning(
+        "[browser] sys.frozen=True pero no se encontro chromium empaquetado "
+        "en %s. Buscando: %s",
+        browser_root,
+        candidates,
+    )
+    return None
 
 
 DEFAULT_BRAVE_PATHS: list[str] = [
@@ -90,9 +153,10 @@ def get_browser_config(engine: str, custom_path: str = "") -> dict[str, Any]:
     engine = (engine or "chromium").lower().strip()
 
     if engine == "chromium":
+        bundled = _find_bundled_browser()
         return {
             "name": "chromium",
-            "executable_path": None,
+            "executable_path": bundled,  # None si no hay bundled, Playwright usa su default
             "is_system": False,
         }
 
@@ -182,10 +246,12 @@ def launch_persistent_browser(
         )
 
     # Defaults utiles para que el browser se vea "humano"
-    launch_kwargs.setdefault("user_agent", (
+    _default_ua = _PLATFORM_UA.get(
+        sys.platform,
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-    ))
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    )
+    launch_kwargs.setdefault("user_agent", _default_ua)
     launch_kwargs["headless"] = bool(headed)
     launch_kwargs["viewport"] = {"width": 1440, "height": 900}
     launch_kwargs["locale"] = "en-US"

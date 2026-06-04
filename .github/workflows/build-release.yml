@@ -1,0 +1,123 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  PYTHON_VERSION: '3.14'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: jobsprout-linux-x64
+            platform: linux
+            browser_subdir: chrome-linux/chrome
+          - os: windows-latest
+            artifact_name: jobsprout-windows-x64
+            platform: windows
+            browser_subdir: chrome-win/chrome.exe
+          - os: macos-latest
+            artifact_name: jobsprout-macos-x64
+            platform: macos
+            browser_subdir: chrome-mac/Chromium.app
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install system deps (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 libgl1 libxcb-cursor0 \
+            libxkbcommon-x11-0 libdbus-1-3
+
+      - name: Install Python deps
+        run: |
+          pip install -r requirements.txt pyinstaller
+          python -m playwright install chromium
+
+      - name: Build with PyInstaller
+        shell: bash
+        run: |
+          SEP=":"
+          [[ "${{ matrix.platform }}" == "windows" ]] && SEP=";"
+          pyinstaller --onedir --windowed \
+            --name "JobSprout" \
+            --icon "images/logo-cuadrado-app.png" \
+            --add-data "images${SEP}images" \
+            --hidden-import PyQt6.sip \
+            --collect-all playwright \
+            main.py
+
+      - name: Bundle Playwright Chromium
+        shell: bash
+        run: |
+          BROWSER_DIR=$(python scripts/find_playwright_browser.py)
+          echo "Browser dir: $BROWSER_DIR"
+          ls "$BROWSER_DIR/"
+          DEST="dist/JobSprout/_internal/playwright-browser"
+          mkdir -p "$DEST"
+          cp -r "$BROWSER_DIR/"* "$DEST/"
+          echo "Bundled: $(du -sh "$DEST" | cut -f1)"
+
+      - name: Create archive
+        shell: bash
+        run: |
+          cd dist
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            7z a -tzip "../${{ matrix.artifact_name }}-${{ github.ref_name }}.zip" JobSprout/
+          else
+            tar czf "../${{ matrix.artifact_name }}-${{ github.ref_name }}.tar.gz" JobSprout/
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}-${{ github.ref_name }}.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: jobsprout-*/*
+          generate_release_notes: true
+          body: |
+            ## Job Sprout ${{ github.ref_name }}
+
+            ### Descarga
+            | Sistema | Archivo |
+            |---------|---------|
+            | Linux   | `jobsprout-linux-x64-*.tar.gz` |
+            | Windows | `jobsprout-windows-x64-*.zip` |
+            | macOS   | `jobsprout-macos-x64-*.tar.gz` |
+
+            ### Requisitos
+            - **Linux**: `sudo apt install libegl1 libgl1 libxcb-cursor0`
+            - **Windows**: Ninguno
+            - **macOS**: Ninguno
+
+            ### Uso
+            1. Descarga el archivo de tu SO
+            2. Extrae
+            3. Ejecuta `JobSprout` (o `JobSprout.exe`)
