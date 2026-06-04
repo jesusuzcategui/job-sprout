@@ -42,6 +42,8 @@ def cmd_init_db() -> int:
 
 
 def cmd_gui() -> int:
+    from core.browser import ensure_playwright_browser
+    ensure_playwright_browser()
     try:
         from gui.main_window import launch_gui
     except ImportError as e:
@@ -55,6 +57,8 @@ def cmd_gui() -> int:
 
 
 def cmd_cli(args: argparse.Namespace) -> int:
+    from core.browser import ensure_playwright_browser
+    ensure_playwright_browser()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
@@ -87,6 +91,8 @@ def cmd_cli(args: argparse.Namespace) -> int:
 
 
 def cmd_cli_scraper(args: argparse.Namespace) -> int:
+    from core.browser import ensure_playwright_browser
+    ensure_playwright_browser()
     from scripts.run_cli import main as run_cli_main
     sys.argv = [
         "run_cli.py",

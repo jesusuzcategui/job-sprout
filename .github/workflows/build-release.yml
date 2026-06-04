@@ -15,13 +15,18 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact_name: jobsprout-linux-x64
+            artifact_name: JobSprout-linux-x64
+            release_file: JobSprout-linux-x64
             platform: linux
+
           - os: windows-latest
-            artifact_name: jobsprout-windows-x64
+            artifact_name: JobSprout-windows-x64
+            release_file: JobSprout-windows-x64.exe
             platform: windows
+
           - os: macos-latest
-            artifact_name: jobsprout-macos-x64
+            artifact_name: JobSprout-macos-x64
+            release_file: JobSprout-macos-x64.dmg
             platform: macos
 
     runs-on: ${{ matrix.os }}
@@ -47,14 +52,13 @@ jobs:
           pip install -r requirements.txt pyinstaller pillow
           python -m playwright install chromium
 
-      - name: Build with PyInstaller
+      - name: Build (Linux/Windows — onefile)
+        if: matrix.platform != 'macos'
         shell: bash
         run: |
           SEP=":"
           [[ "${{ matrix.platform }}" == "windows" ]] && SEP=";"
-          ARGS="--onedir"
-          [[ "${{ matrix.platform }}" != "linux" ]] && ARGS="$ARGS --windowed"
-          pyinstaller $ARGS \
+          pyinstaller --onefile \
             --name "JobSprout" \
             --icon "images/logo-cuadrado-app.png" \
             --add-data "images${SEP}images" \
@@ -62,32 +66,40 @@ jobs:
             --collect-all playwright \
             main.py
 
-      - name: Bundle Playwright Chromium
+      - name: Build (macOS — .app bundle)
+        if: matrix.platform == 'macos'
         shell: bash
         run: |
-          BROWSER_DIR=$(python scripts/find_playwright_browser.py)
-          echo "Browser dir: $BROWSER_DIR"
-          ls "$BROWSER_DIR/"
-          DEST="dist/JobSprout/_internal/playwright-browser"
-          mkdir -p "$DEST"
-          cp -r "$BROWSER_DIR/"* "$DEST/"
-          echo "Bundled: $(du -sh "$DEST" | cut -f1)"
+          pyinstaller --onedir --windowed \
+            --name "JobSprout" \
+            --icon "images/logo-cuadrado-app.png" \
+            --add-data "images:images" \
+            --hidden-import PyQt6.sip \
+            --collect-all playwright \
+            main.py
 
-      - name: Create archive
+      - name: DMG (macOS)
+        if: matrix.platform == 'macos'
         shell: bash
         run: |
-          cd dist
-          if [[ "${{ matrix.platform }}" == "windows" ]]; then
-            7z a -tzip "../${{ matrix.artifact_name }}-${{ github.ref_name }}.zip" JobSprout/
-          else
-            tar czf "../${{ matrix.artifact_name }}-${{ github.ref_name }}.tar.gz" JobSprout/
-          fi
+          hdiutil create -volname "Job Sprout" \
+            -srcfolder dist/JobSprout.app \
+            -ov -format UDZO \
+            "${{ matrix.release_file }}"
+
+      - name: Rename executable (Linux/Windows)
+        if: matrix.platform != 'macos'
+        shell: bash
+        run: |
+          SRC="dist/JobSprout"
+          [[ "${{ matrix.platform }}" == "windows" ]] && SRC="dist/JobSprout.exe"
+          cp "$SRC" "${{ matrix.release_file }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_name }}-${{ github.ref_name }}.*
+          path: ${{ matrix.release_file }}
 
   release:
     needs: build
@@ -100,24 +112,17 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: jobsprout-*/*
+          files: JobSprout-*/*
           generate_release_notes: true
           body: |
             ## Job Sprout ${{ github.ref_name }}
 
-            ### Descarga
+            ### Descarga directa (ejecutables, sin comprimir)
             | Sistema | Archivo |
             |---------|---------|
-            | Linux   | `jobsprout-linux-x64-*.tar.gz` |
-            | Windows | `jobsprout-windows-x64-*.zip` |
-            | macOS   | `jobsprout-macos-x64-*.tar.gz` |
+            | 🐧 Linux   | `JobSprout-linux-x64` |
+            | 🪟 Windows | `JobSprout-windows-x64.exe` |
+            | 🍎 macOS   | `JobSprout-macos-x64.dmg` |
 
-            ### Requisitos
-            - **Linux**: `sudo apt install libegl1 libgl1 libxcb-cursor0`
-            - **Windows**: Ninguno
-            - **macOS**: Ninguno
-
-            ### Uso
-            1. Descarga el archivo de tu SO
-            2. Extrae
-            3. Ejecuta `JobSprout` (o `JobSprout.exe`)
+            ### Primera ejecución
+            Chromium se descarga e instala automáticamente el primer lanzamiento (~300MB, una sola vez).

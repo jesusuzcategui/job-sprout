@@ -44,6 +44,34 @@ _PLATFORM_UA: dict[str, str] = {
 }
 
 
+def ensure_playwright_browser() -> None:
+    """Instala Playwright Chromium si no está presente.
+
+    La primera ejecución descarga ~300MB. Es idempotente.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            exe = p.chromium.executable_path
+            if exe and os.path.isfile(exe):
+                return
+    except Exception:
+        pass
+
+    log.info("[browser] Chromium no encontrado. Instalando… (una vez, ~300MB)")
+    import subprocess
+    import sys
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT,
+        )
+        log.info("[browser] Chromium instalado correctamente")
+    except subprocess.CalledProcessError as e:
+        log.warning("[browser] Fallo instalacion de Chromium: %s", e)
+
+
 def _find_bundled_browser() -> str | None:
     """Detecta si corremos dentro de un bundle PyInstaller y busca el
     Playwright Chromium empaquetado en _internal/playwright-browser/.
