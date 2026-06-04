@@ -52,8 +52,6 @@ SCHEMA_BASE_STATEMENTS: tuple[str, ...] = (
     );
     """,
     "CREATE INDEX IF NOT EXISTS idx_keywords_perfil ON keywords(perfil_id);",
-    "CREATE INDEX IF NOT EXISTS idx_vacantes_perfil ON vacantes(perfil_id);",
-    "CREATE INDEX IF NOT EXISTS idx_vacantes_aprobado ON vacantes(aprobado);",
 )
 
 
@@ -83,6 +81,8 @@ SCHEMA_VACANTES_STATEMENTS: tuple[str, ...] = (
         FOREIGN KEY (perfil_id) REFERENCES perfiles(id) ON DELETE SET NULL
     );
     """,
+    "CREATE INDEX IF NOT EXISTS idx_vacantes_perfil ON vacantes(perfil_id);",
+    "CREATE INDEX IF NOT EXISTS idx_vacantes_aprobado ON vacantes(aprobado);",
     "CREATE INDEX IF NOT EXISTS idx_vacantes_relevance ON vacantes(relevance_score);",
 )
 
@@ -104,9 +104,9 @@ def init_db(db_path: Path | None = None) -> None:
         for stmt in SCHEMA_BASE_STATEMENTS:
             conn.execute(stmt)
         _migrate_perfiles(conn)
-        _migrate_vacantes(conn)
         for stmt in SCHEMA_VACANTES_STATEMENTS:
             conn.execute(stmt)
+        _migrate_vacantes(conn)
         _seed_default_settings(conn)
         conn.commit()
     finally:
