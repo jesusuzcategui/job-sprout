@@ -16,7 +16,7 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: JobSprout-linux-x64
-            release_file: JobSprout-linux-x64
+            release_file: JobSprout-linux-x64.AppImage
             platform: linux
 
           - os: windows-latest
@@ -39,34 +39,82 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      # ── Linux system deps ──────────────────────────────────
       - name: Install system deps (Linux)
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libegl1 libgl1 libxcb-cursor0 \
-            libxkbcommon-x11-0 libdbus-1-3
+            libxkbcommon-x11-0 libdbus-1-3 \
+            squashfs-tools desktop-file-utils
 
+      # ── Python deps ────────────────────────────────────────
       - name: Install Python deps
         run: |
           pip install -r requirements.txt pyinstaller pillow
           python -m playwright install chromium
 
-      - name: Build (Linux/Windows — onefile)
-        if: matrix.platform != 'macos'
+      # ── Linux: PyInstaller + AppImage ──────────────────────
+      - name: Build (Linux — AppImage)
+        if: matrix.platform == 'linux'
         shell: bash
         run: |
           SEP=":"
-          [[ "${{ matrix.platform }}" == "windows" ]] && SEP=";"
-          pyinstaller --onefile \
+          pyinstaller --onedir \
             --name "JobSprout" \
-            --icon "images/logo-cuadrado-app.png" \
             --add-data "images${SEP}images" \
             --hidden-import PyQt6.sip \
             --collect-all playwright \
             main.py
 
-      - name: Build (macOS — .app bundle)
+          # AppDir structure
+          APPDIR="AppDir"
+          mkdir -p "$APPDIR/usr/bin"
+          cp -r dist/JobSprout "$APPDIR/usr/bin/"
+
+          cat > "$APPDIR/AppRun" << 'APPEND'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/JobSprout/JobSprout" "$@"
+          APPEND
+          chmod +x "$APPDIR/AppRun"
+
+          cat > "$APPDIR/job-sprout.desktop" << 'DESKEND'
+          [Desktop Entry]
+          Name=Job Sprout
+          Comment=Agente scraper inteligente para portales de empleo
+          Exec=JobSprout
+          Icon=job-sprout
+          Type=Application
+          Categories=Office;
+          DESKEND
+
+          cp images/logo-cuadrado-app.png "$APPDIR/job-sprout.png"
+
+          # appimagetool sin FUSE
+          wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O appimagetool
+          chmod +x appimagetool
+          ./appimagetool --appimage-extract > /dev/null 2>&1
+          ./squashfs-root/AppRun "$APPDIR" "${{ matrix.release_file }}"
+          ls -lh "${{ matrix.release_file }}"
+
+      # ── Windows: onefile .exe ──────────────────────────────
+      - name: Build (Windows — .exe)
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          pyinstaller --onefile \
+            --name "JobSprout" \
+            --icon "images/logo-cuadrado-app.png" \
+            --add-data "images;images" \
+            --hidden-import PyQt6.sip \
+            --collect-all playwright \
+            main.py
+          cp dist/JobSprout.exe "${{ matrix.release_file }}"
+
+      # ── macOS: .app bundle + .dmg ──────────────────────────
+      - name: Build (macOS — .app)
         if: matrix.platform == 'macos'
         shell: bash
         run: |
@@ -87,14 +135,7 @@ jobs:
             -ov -format UDZO \
             "${{ matrix.release_file }}"
 
-      - name: Rename executable (Linux/Windows)
-        if: matrix.platform != 'macos'
-        shell: bash
-        run: |
-          SRC="dist/JobSprout"
-          [[ "${{ matrix.platform }}" == "windows" ]] && SRC="dist/JobSprout.exe"
-          cp "$SRC" "${{ matrix.release_file }}"
-
+      # ── Upload ─────────────────────────────────────────────
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -117,12 +158,24 @@ jobs:
           body: |
             ## Job Sprout ${{ github.ref_name }}
 
-            ### Descarga directa (ejecutables, sin comprimir)
+            ### Descarga
             | Sistema | Archivo |
             |---------|---------|
-            | 🐧 Linux   | `JobSprout-linux-x64` |
+            | 🐧 Linux (cualquier distro) | `JobSprout-linux-x64.AppImage` |
             | 🪟 Windows | `JobSprout-windows-x64.exe` |
-            | 🍎 macOS   | `JobSprout-macos-x64.dmg` |
+            | 🍎 macOS | `JobSprout-macos-x64.dmg` |
+
+            ### Linux (AppImage)
+            ```bash
+            chmod +x JobSprout-linux-x64.AppImage
+            ./JobSprout-linux-x64.AppImage
+            ```
+
+            ### Windows
+            Doble clic en `JobSprout-windows-x64.exe`.
+
+            ### macOS
+            Abrir `JobSprout-macos-x64.dmg` y arrastrar `JobSprout.app` a Applications.
 
             ### Primera ejecución
-            Chromium se descarga e instala automáticamente el primer lanzamiento (~300MB, una sola vez).
+            Chromium se descarga e instala automáticamente (~300MB, una sola vez).
